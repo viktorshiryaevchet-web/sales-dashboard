@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Воронка продаж — Елена</title>
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+:root {
+  --bg: #0f1117;
+  --surface: #181c26;
+  --surface2: #1e2333;
+  --border: rgba(255,255,255,0.07);
+  --border2: rgba(255,255,255,0.12);
+  --text: #e8eaf0;
+  --text2: #8a90a0;
+  --text3: #565c6e;
+  --accent: #4f8ef7;
+  --accent2: #38c98a;
+  --accent3: #f5a623;
+  --accent4: #e05b5b;
+  --accent5: #a78bfa;
+  --font: 'Golos Text', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; }
+body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; }
+.topbar {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 16px 32px; display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 100;
+}
+.topbar-left { display: flex; align-items: center; gap: 16px; }
+.logo { font-size: 16px; font-weight: 700; letter-spacing: -0.3px; }
+.logo span { color: var(--accent); }
+.manager-badge {
+  background: rgba(79,142,247,0.1); color: var(--accent);
+  border: 1px solid rgba(79,142,247,0.25); border-radius: 20px;
+  padding: 3px 12px; font-size: 12px; font-weight: 500;
+}
+.topbar-right { display: flex; align-items: center; gap: 12px; }
+.last-updated { font-size: 11px; color: var(--text3); font-family: var(--mono); }
+.refresh-btn {
+  background: rgba(255,255,255,0.05); border: 1px solid var(--border2);
+  color: var(--text2); border-radius: 8px; padding: 6px 14px;
+  font-size: 12px; font-family: var(--font); cursor: pointer; transition: all 0.15s;
+}
+.refresh-btn:hover { background: rgba(255,255,255,0.09); color: var(--text); }
+.refresh-btn.loading { opacity: 0.5; pointer-events: none; }
+.page { padding: 28px 32px; max-width: 1280px; margin: 0 auto; }
+.filter-row { display: flex; gap: 8px; margin-bottom: 28px; flex-wrap: wrap; align-items: center; }
+.filter-label { font-size: 12px; color: var(--text3); margin-right: 4px; }
+.chip {
+  padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 500;
+  border: 1px solid var(--border2); background: transparent; color: var(--text2);
+  cursor: pointer; transition: all 0.15s; font-family: var(--font);
+}
+.chip:hover { border-color: rgba(79,142,247,0.4); color: var(--accent); }
+.chip.active { background: rgba(79,142,247,0.12); border-color: rgba(79,142,247,0.45); color: var(--accent); }
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 28px; }
+.kpi-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 18px 20px; position: relative; overflow: hidden;
+}
+.kpi-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; border-radius: 12px 12px 0 0;
+}
+.kpi-card.blue::before { background: var(--accent); }
+.kpi-card.green::before { background: var(--accent2); }
+.kpi-card.amber::before { background: var(--accent3); }
+.kpi-card.purple::before { background: var(--accent5); }
+.kpi-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px; }
+.kpi-value { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; line-height: 1; margin-bottom: 6px; }
+.kpi-sub { font-size: 11px; color: var(--text3); }
+.delta-up { color: var(--accent2); }
+.delta-down { color: var(--accent4); }
+.grid-3 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 16px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px 22px; }
+.card-title { font-size: 13px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 18px; }
+.funnel-row { display: flex; align-items: center; gap: 12px; margin-bottom: 9px; }
+.funnel-label { font-size: 12px; color: var(--text2); width: 155px; flex-shrink: 0; text-align: right; }
+.funnel-track { flex: 1; background: rgba(255,255,255,0.04); border-radius: 5px; height: 30px; overflow: hidden; }
+.funnel-fill {
+  height: 100%; border-radius: 5px; display: flex; align-items: center; padding: 0 10px;
+  transition: width 0.5s cubic-bezier(0.16,1,0.3,1); min-width: 36px;
+}
+.funnel-fill-val { font-size: 12px; font-weight: 600; font-family: var(--mono); }
+.funnel-pct { font-size: 11px; color: var(--text3); width: 40px; text-align: right; font-family: var(--mono); flex-shrink: 0; }
+.refusal-list { display: flex; flex-direction: column; gap: 10px; }
+.refusal-row { display: flex; align-items: center; gap: 10px; }
+.refusal-name { font-size: 12px; color: var(--text2); width: 130px; flex-shrink: 0; }
+.refusal-track { flex: 1; background: rgba(255,255,255,0.04); border-radius: 4px; height: 8px; overflow: hidden; }
+.refusal-fill { height: 100%; border-radius: 4px; }
+.refusal-cnt { font-size: 12px; font-family: var(--mono); color: var(--text3); width: 28px; text-align: right; }
+.week-table { width: 100%; border-collapse: collapse; }
+.week-table th { font-size: 11px; color: var(--text3); text-align: left; padding: 0 8px 10px 0; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+.week-table th:not(:first-child) { text-align: right; }
+.week-table td { font-size: 13px; padding: 7px 8px 7px 0; border-top: 1px solid var(--border); color: var(--text2); }
+.week-table td:not(:first-child) { text-align: right; font-family: var(--mono); color: var(--text); }
+.pill-up { color: var(--accent2); font-size: 11px; }
+.pill-down { color: var(--accent4); font-size: 11px; }
+.pill-same { color: var(--text3); font-size: 11px; }
+.money-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.money-row:last-child { border-bottom: none; }
+.money-type { font-size: 12px; color: var(--text2); }
+.money-val { font-size: 16px; font-weight: 700; font-family: var(--mono); }
+.money-val.green { color: var(--accent2); }
+.money-val.blue { color: var(--accent); }
+#status-bar { text-align: center; padding: 80px 20px; font-size: 14px; color: var(--text3); }
+.spinner { width: 32px; height: 32px; border: 2px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (max-width: 768px) {
+  .page { padding: 16px; } .topbar { padding: 12px 16px; }
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .kpi-grid { grid-template-columns: 1fr 1fr; }
+  .funnel-label { width: 100px; font-size: 11px; }
+}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="logo">Воронка<span>.</span></div>
+    <div class="manager-badge" id="manager-badge">Загрузка...</div>
+  </div>
+  <div class="topbar-right">
+    <span class="last-updated" id="last-updated">—</span>
+    <button class="refresh-btn" id="refresh-btn" onclick="loadData()">↻ Обновить</button>
+  </div>
+</div>
+<div class="page">
+  <div id="status-bar"><div class="spinner"></div>Загружаем данные из Google Sheets...</div>
+  <div id="main-content" style="display:none">
+    <div class="filter-row">
+      <span class="filter-label">Период:</span>
+      <button class="chip active" onclick="setFilter('all',this)">Все недели</button>
+    </div>
+    <div class="kpi-grid" id="kpi-grid"></div>
+    <div class="grid-3">
+      <div class="card">
+        <div class="card-title">Воронка продаж</div>
+        <div id="funnel-rows"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Оплаты</div>
+        <div id="money-rows"></div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">Причины отказов</div>
+        <div class="refusal-list" id="refusal-list"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Сравнение по неделям</div>
+        <table class="week-table">
+          <thead><tr><th>Этап</th><th id="wh1">—</th><th id="wh2">—</th><th>Δ</th></tr></thead>
+          <tbody id="week-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+const SCRIPT_ID = 'AKfycbzf8IBUzIFWPw6abdQW0FtnGfEz7RzSg7NQC02iGiLf_RU2laYgTITYTIptAqdjPZAaUg';
+const API_URL = 'https://script.google.com/macros/s/' + SCRIPT_ID + '/exec';
+
+const STAGE_ORDER = ['Новый заказ','Квалификация','Подготовка КП','Согласование условий','Деньги получены','Проект Работаем'];
+const STAGE_COLORS = ['#4f8ef7','#38c98a','#f5a623','#e88c3a','#a78bfa','#e05b5b'];
+const REFUSAL_COLORS = ['#4f8ef7','#e05b5b','#f5a623','#38c98a','#a78bfa'];
+const SHORT = {'Новый заказ':'Новые','Квалификация':'Квалиф.','Подготовка КП':'Подг. КП','Согласование условий':'Согласование','Деньги получены':'Деньги','Проект Работаем':'Проект'};
+
+let allData = [];
+let currentFilter = 'all';
+let weeks = [];
+
+function fetchJSONP(url) {
+  return new Promise((resolve, reject) => {
+    const cb = 'cb_' + Date.now();
+    const script = document.createElement('script');
+    window[cb] = (data) => { delete window[cb]; document.body.removeChild(script); resolve(data); };
+    script.onerror = reject;
+    script.src = url + '?callback=' + cb;
+    document.body.appendChild(script);
+  });
+}
+
+function parseNum(v) {
+  if(typeof v === 'number') return v;
+  if(!v) return 0;
+  return parseInt(String(v).replace(/\s/g,'')) || 0;
+}
+
+async function loadData() {
+  const btn = document.getElementById('refresh-btn');
+  btn.classList.add('loading'); btn.textContent = '↻ Загрузка...';
+  try {
+    const json = await fetchJSONP(API_URL);
+    allData = Array.isArray(json) ? json : [];
+    weeks = [...new Set(allData.map(r => r['неделя']).filter(Boolean))].sort((a,b)=>a-b);
+
+    const filterRow = document.querySelector('.filter-row');
+    filterRow.querySelectorAll('.chip:not(:first-child)').forEach(c => c.remove());
+    weeks.forEach(w => {
+      const c = document.createElement('button');
+      c.className = 'chip'; c.textContent = 'Неделя ' + w;
+      c.onclick = function(){ setFilter(w, this); };
+      filterRow.appendChild(c);
+    });
+
+    const managers = [...new Set(allData.map(r => r['Менеджер']).filter(Boolean))];
+    document.getElementById('manager-badge').textContent = managers.join(', ') || 'Все';
+    document.getElementById('last-updated').textContent = 'обновлено ' + new Date().toLocaleTimeString('ru');
+    document.getElementById('status-bar').style.display = 'none';
+    document.getElementById('main-content').style.display = 'block';
+    render(currentFilter);
+  } catch(e) {
+    document.getElementById('status-bar').innerHTML = '<div style="color:#e05b5b;font-size:14px;">⚠ Ошибка загрузки данных.<br><span style="font-size:12px;color:#565c6e;">'+e+'</span></div>';
+  }
+  btn.classList.remove('loading'); btn.textContent = '↻ Обновить';
+}
+
+function getFiltered(week) {
+  if(week === 'all') return allData;
+  return allData.filter(r => Number(r['неделя']) === Number(week));
+}
+function getStage(data, stage) {
+  return data.filter(r => r['Этап воронки'] === stage).reduce((s,r) => s + parseNum(r['Количество/Сумма']), 0);
+}
+function setFilter(week, el) {
+  currentFilter = week;
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  render(week);
+}
+
+function render(week) {
+  const data = getFiltered(week);
+  renderKPI(data);
+  renderFunnel(data);
+  renderMoney(week);
+  renderRefusals(data);
+  renderWeekTable();
+}
+
+function renderKPI(data) {
+  const nz = getStage(data,'Новый заказ');
+  const dm = getStage(data,'Деньги получены');
+  const proj = getStage(data,'Проект Работаем');
+  const calls = getStage(data,'Количество звонков');
+  const conv = nz > 0 ? Math.round(dm/nz*100) : 0;
+  const w = weeks;
+  const nzFirst = w.length ? getStage(getFiltered(w[0]),'Новый заказ') : 0;
+  const nzLast = w.length > 1 ? getStage(getFiltered(w[w.length-1]),'Новый заказ') : 0;
+  const nzDelta = nzLast - nzFirst;
+  document.getElementById('kpi-grid').innerHTML = `
+    <div class="kpi-card blue"><div class="kpi-label">Новых заказов</div><div class="kpi-value">${nz}</div>
+      <div class="kpi-sub delta-${nzDelta>=0?'up':'down'}">${nzDelta>=0?'+':''}${nzDelta} к пред. неделе</div></div>
+    <div class="kpi-card green"><div class="kpi-label">Деньги получены</div><div class="kpi-value">${dm}</div>
+      <div class="kpi-sub">Конверсия <strong style="color:var(--accent2)">${conv}%</strong></div></div>
+    <div class="kpi-card purple"><div class="kpi-label">Проект работаем</div><div class="kpi-value">${proj}</div>
+      <div class="kpi-sub">Активных клиентов</div></div>
+    <div class="kpi-card amber"><div class="kpi-label">Звонков</div><div class="kpi-value">${calls}</div>
+      <div class="kpi-sub">За период</div></div>
+    <div class="kpi-card green"><div class="kpi-label">Конверсия</div><div class="kpi-value">${conv}<span style="font-size:16px;font-weight:500">%</span></div>
+      <div class="kpi-sub">Заказ → Оплата</div></div>`;
+}
+
+function renderFunnel(data) {
+  const top = getStage(data,'Новый заказ') || 1;
+  document.getElementById('funnel-rows').innerHTML = STAGE_ORDER.map((s,i) => {
+    const v = getStage(data, s);
+    const pct = Math.round(v/top*100);
+    return `<div class="funnel-row">
+      <div class="funnel-label">${s}</div>
+      <div class="funnel-track"><div class="funnel-fill" style="width:${pct}%;background:${STAGE_COLORS[i]}22;border-left:3px solid ${STAGE_COLORS[i]}">
+        <span class="funnel-fill-val" style="color:${STAGE_COLORS[i]}">${v}</span></div></div>
+      <div class="funnel-pct">${pct}%</div></div>`;
+  }).join('');
+}
+
+function renderMoney(week) {
+  const keys = ['Деньги получены (сумма оплат) Постоянные','Деньги получены (сумма оплат) Новые'];
+  const labels = ['Постоянные','Новые'];
+  let rows = [];
+  const ws = week === 'all' ? weeks : [week];
+  ws.forEach(w => {
+    const d = getFiltered(w);
+    keys.forEach((k,i) => {
+      const v = getStage(d, k);
+      if(v) rows.push({label: labels[i] + ' (нед. '+w+')', val: v, cls: i===0?'green':'blue'});
+    });
+  });
+  const total = rows.reduce((s,r)=>s+r.val,0);
+  document.getElementById('money-rows').innerHTML = rows.map(r =>
+    `<div class="money-row"><span class="money-type">${r.label}</span><span class="money-val ${r.cls}">${r.val.toLocaleString('ru')} ₽</span></div>`
+  ).join('') + `<div class="money-row" style="margin-top:4px"><span class="money-type" style="font-weight:600;color:var(--text)">Итого</span><span class="money-val green">${total.toLocaleString('ru')} ₽</span></div>`;
+}
+
+function renderRefusals(data) {
+  const map = {};
+  data.forEach(r => {
+    const reason = r['Причина отказа'];
+    const cnt = parseNum(r['Причина отказа количество']);
+    if(reason && cnt > 0) map[reason] = (map[reason]||0) + cnt;
+  });
+  const entries = Object.entries(map).sort((a,b)=>b[1]-a[1]);
+  const maxV = entries[0]?.[1] || 1;
+  document.getElementById('refusal-list').innerHTML = entries.length ? entries.map(([k,v],i) =>
+    `<div class="refusal-row">
+      <div class="refusal-name">${k}</div>
+      <div class="refusal-track"><div class="refusal-fill" style="width:${Math.round(v/maxV*100)}%;background:${REFUSAL_COLORS[i%REFUSAL_COLORS.length]}"></div></div>
+      <div class="refusal-cnt">${v}</div></div>`).join('')
+    : '<div style="color:var(--text3);font-size:12px;">Нет данных</div>';
+}
+
+function renderWeekTable() {
+  if(weeks.length < 2) { document.getElementById('week-tbody').innerHTML = '<tr><td colspan="4" style="color:var(--text3);font-size:12px;">Нужно минимум 2 недели</td></tr>'; return; }
+  const w1 = weeks[0], w2 = weeks[weeks.length-1];
+  document.getElementById('wh1').textContent = 'Нед. ' + w1;
+  document.getElementById('wh2').textContent = 'Нед. ' + w2;
+  const d1 = getFiltered(w1), d2 = getFiltered(w2);
+  document.getElementById('week-tbody').innerHTML = STAGE_ORDER.map(s => {
+    const v1 = getStage(d1,s), v2 = getStage(d2,s), d = v2-v1;
+    const dEl = d===0 ? `<span class="pill-same">—</span>` : (d>0?`<span class="pill-up">+${d}</span>`:`<span class="pill-down">${d}</span>`);
+    return `<tr><td style="font-size:12px;color:var(--text2)">${SHORT[s]||s}</td><td>${v1||'—'}</td><td>${v2||'—'}</td><td>${dEl}</td></tr>`;
+  }).join('');
+}
+
+loadData();
+setInterval(loadData, 5*60*1000);
+</script>
+</body>
+</html>
