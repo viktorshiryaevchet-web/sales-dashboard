@@ -387,10 +387,6 @@
       <div class="chart-title">Деньги получены (сделки) по менеджерам</div>
       <div class="chart-wrap"><canvas id="chartDeals"></canvas></div>
     </div>
-    <div class="chart-card full">
-      <div class="chart-title">Динамика звонков по дням</div>
-      <div class="chart-wrap"><canvas id="chartTimeline"></canvas></div>
-    </div>
     <div class="chart-card">
       <div class="chart-title">Конверсия воронки, %</div>
       <div class="chart-wrap"><canvas id="chartConv"></canvas></div>
@@ -416,7 +412,7 @@
 
 <script>
 const SHEET_ID = '1UegkHK1UcJXKVmyaH-o_JxVJIod-Dj_cWxqpxpStaP4';
-const SHEET_GID = '221690997';  // ← ИСПРАВЛЕНО! Правильный gid для листа "🖊️ Для заполенения"
+const SHEET_GID = '221690997';
 const PLANS_GID = '1249869634';
 const AUTO_REFRESH_MS = 3 * 60 * 60 * 1000;
 
@@ -522,7 +518,7 @@ function filtered() {
   );
 }
 
-function render() { const rows = filtered(); renderKPI(rows); renderPayments(rows); renderChartPayPerm(rows); renderChartPayNew(rows); renderFunnel(rows); renderChartCalls(rows); renderChartDeals(rows); renderTimeline(rows); renderConversion(rows); renderReject(rows); renderTable(rows); renderPlans(); }
+function render() { const rows = filtered(); renderKPI(rows); renderPayments(rows); renderChartPayPerm(rows); renderChartPayNew(rows); renderFunnel(rows); renderChartCalls(rows); renderChartDeals(rows); renderConversion(rows); renderReject(rows); renderTable(rows); renderPlans(); }
 
 function sumStage(rows, stage, manager) { return rows.filter(r => r['Этап воронки'] === stage && (!manager || r['Менеджер'] === manager)).reduce((s, r) => s + parseNum(r['Количество/Сумма']), 0); }
 function sumPayType(rows, type) { return rows.filter(r => (r['Этап воронки'] || '').startsWith('Деньги получены (сумма') && (!type || (r['Этап воронки'] || '').toLowerCase().includes(type.toLowerCase()))).reduce((s, r) => s + parseNum(r['Количество/Сумма']), 0); }
@@ -599,13 +595,6 @@ function renderChartDeals(rows) {
   makeChart('chartDeals', 'bar', { labels: mgrs, datasets: [{ label: 'Деньги получены', data: vals, backgroundColor: mgrs.map((_, i) => COLORS[(i+2)%COLORS.length] + 'cc'), borderRadius: 6 }] });
 }
 
-function renderTimeline(rows) {
-  const byDate = {};
-  rows.filter(r => r['Этап воронки'] === 'Количество звонков').forEach(r => { const d = String(r['Дата'] || '').trim(); if (d) byDate[d] = (byDate[d] || 0) + parseNum(r['Количество/Сумма']); });
-  const dates = Object.keys(byDate).sort();
-  makeChart('chartTimeline', 'line', { labels: dates, datasets: [{ label: 'Звонки', data: dates.map(d => byDate[d]), borderColor: '#6c63ff', backgroundColor: 'rgba(108,99,255,.12)', tension: .35, fill: true, pointRadius: 4 }] });
-}
-
 function renderConversion(rows) {
   const vals = FUNNEL_STAGES.map(s => sumStage(rows, s));
   const base = vals[0] || 1;
@@ -631,7 +620,6 @@ function renderTable(rows) {
   }).join('');
 }
 
-// ========== ПАРСИНГ ПЛАНОВ (без изменений, работает) ==========
 async function loadPlans() {
   try {
     const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${PLANS_GID}&t=${Date.now()}`;
