@@ -416,7 +416,7 @@
 
 <script>
 const SHEET_ID = '1UegkHK1UcJXKVmyaH-o_JxVJIod-Dj_cWxqpxpStaP4';
-const SHEET_GID = '1998838779';
+const SHEET_GID = '221690997';  // ← ИСПРАВЛЕНО! Правильный gid для листа "🖊️ Для заполенения"
 const PLANS_GID = '1249869634';
 const AUTO_REFRESH_MS = 3 * 60 * 60 * 1000;
 
@@ -631,17 +631,14 @@ function renderTable(rows) {
   }).join('');
 }
 
-// ========== НОВЫЙ ПАРСИНГ ПЛАНОВ ПОД ВАШУ СТРУКТУРУ (с фактами) ==========
+// ========== ПАРСИНГ ПЛАНОВ (без изменений, работает) ==========
 async function loadPlans() {
   try {
     const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${PLANS_GID}&t=${Date.now()}`;
     const res = await fetch(url);
     const text = await res.text();
     const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/);
-    if (!match) {
-      console.warn('Plans: no match');
-      return;
-    }
+    if (!match) return;
     const json = JSON.parse(match[1]);
     parsePlansV4(json.table);
   } catch (e) {
@@ -650,17 +647,14 @@ async function loadPlans() {
 }
 
 function parsePlansV4(table) {
-  // Очищаем старые данные
-  const callsMap = new Map();      // ключ: "менеджер|месяц"
-  const permPayMap = new Map();    // ключ: "менеджер|месяц" для постоянных
-  const newPayMap = new Map();     // ключ: "менеджер|месяц" для новых
+  const callsMap = new Map();
+  const permPayMap = new Map();
+  const newPayMap = new Map();
   
   for (const row of table.rows) {
     if (!row.c) continue;
     const cells = row.c.map(c => c ? (c.f ?? c.v ?? '') : '');
     
-    // ===== ЛЕВАЯ ЧАСТЬ: План звонков (колонки 0-5) =====
-    // Структура: [0]Дата, [1]Неделя, [2]Месяц/Год, [3]Менеджер, [4]План, [5]Факт
     if (cells.length >= 6) {
       const date = String(cells[0] || '').trim();
       const week = String(cells[1] || '').trim();
@@ -673,11 +667,7 @@ function parsePlansV4(table) {
         const monthKey = normalizeMonthYear(monthYear);
         if (monthKey) {
           const key = `${manager}|${monthKey}`;
-          const existing = callsMap.get(key) || { 
-            manager, monthKey, 
-            plan: 0, fact: 0,
-            week: week, date: date 
-          };
+          const existing = callsMap.get(key) || { manager, monthKey, plan: 0, fact: 0 };
           existing.plan += planVal;
           existing.fact += factVal;
           callsMap.set(key, existing);
@@ -685,8 +675,6 @@ function parsePlansV4(table) {
       }
     }
     
-    // ===== ПРАВАЯ ЧАСТЬ: План оплат (колонки 6-12) =====
-    // Структура: [6]Дата, [7]Неделя, [8]Месяц/Год, [9]Менеджер, [10]Тип, [11]План, [12]Факт
     if (cells.length >= 13) {
       const date = String(cells[6] || '').trim();
       const week = String(cells[7] || '').trim();
@@ -700,23 +688,13 @@ function parsePlansV4(table) {
         const monthKey = normalizeMonthYear(monthYear);
         if (monthKey) {
           const key = `${manager}|${monthKey}`;
-          
           if (payType === 'Постоянные') {
-            const existing = permPayMap.get(key) || { 
-              manager, monthKey, type: 'Постоянные',
-              plan: 0, fact: 0,
-              week: week, date: date
-            };
+            const existing = permPayMap.get(key) || { manager, monthKey, plan: 0, fact: 0 };
             existing.plan += planVal;
             existing.fact += factVal;
             permPayMap.set(key, existing);
-          } 
-          else if (payType === 'Новые') {
-            const existing = newPayMap.get(key) || { 
-              manager, monthKey, type: 'Новые',
-              plan: 0, fact: 0,
-              week: week, date: date
-            };
+          } else if (payType === 'Новые') {
+            const existing = newPayMap.get(key) || { manager, monthKey, plan: 0, fact: 0 };
             existing.plan += planVal;
             existing.fact += factVal;
             newPayMap.set(key, existing);
@@ -726,31 +704,9 @@ function parsePlansV4(table) {
     }
   }
   
-  // Преобразуем Map в массивы
-  planRows.calls = Array.from(callsMap.values()).map(p => ({
-    manager: p.manager,
-    monthKey: p.monthKey,
-    plan: p.plan,
-    fact: p.fact
-  }));
-  
-  planRows.payments.permanent = Array.from(permPayMap.values()).map(p => ({
-    manager: p.manager,
-    monthKey: p.monthKey,
-    plan: p.plan,
-    fact: p.fact
-  }));
-  
-  planRows.payments.new = Array.from(newPayMap.values()).map(p => ({
-    manager: p.manager,
-    monthKey: p.monthKey,
-    plan: p.plan,
-    fact: p.fact
-  }));
-  
-  console.log('[Plans V4] Звонки:', planRows.calls);
-  console.log('[Plans V4] Оплаты Постоянные:', planRows.payments.permanent);
-  console.log('[Plans V4] Оплаты Новые:', planRows.payments.new);
+  planRows.calls = Array.from(callsMap.values());
+  planRows.payments.permanent = Array.from(permPayMap.values());
+  planRows.payments.new = Array.from(newPayMap.values());
 }
 
 function normalizeMonthYear(monthYear) {
@@ -765,93 +721,52 @@ function normalizeMonthYear(monthYear) {
 
 function renderPlans() {
   const f = getFilters();
-  
-  // Определяем текущий месяц
-  let targetMonthStr = f.period ? periodToMMYYYY(f.period) : (() => { 
-    const d = new Date(); 
-    return String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear(); 
-  })();
-  
-  // Фильтруем планы по месяцу
+  let targetMonthStr = f.period ? periodToMMYYYY(f.period) : (() => { const d = new Date(); return String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear(); })();
   let callPlans = planRows.calls.filter(p => p.monthKey === targetMonthStr);
   let permPlans = planRows.payments.permanent.filter(p => p.monthKey === targetMonthStr);
   let newPlans = planRows.payments.new.filter(p => p.monthKey === targetMonthStr);
-  
-  // Если выбран менеджер — фильтруем
   if (f.manager) {
     callPlans = callPlans.filter(p => p.manager === f.manager);
     permPlans = permPlans.filter(p => p.manager === f.manager);
     newPlans = newPlans.filter(p => p.manager === f.manager);
   }
-  
   document.getElementById('plansMonthLabel').innerHTML = `Период: <span>${targetMonthStr}</span>`;
-  
   const callsHtml = buildCallsPlansHtml(callPlans);
   const paymentsHtml = buildPayPlansHtml(permPlans, newPlans);
-  
   document.getElementById('plansGrid').innerHTML = `
-    <div class="plans-card">
-      <div class="plans-card-title">📞 План звонков</div>
-      ${callsHtml || '<div class="plan-no-data">Нет плановых данных для этого периода</div>'}
-    </div>
-    <div class="plans-card">
-      <div class="plans-card-title">💰 План оплат</div>
-      ${paymentsHtml || '<div class="plan-no-data">Нет плановых данных для этого периода</div>'}
-    </div>`;
+    <div class="plans-card"><div class="plans-card-title">📞 План звонков</div>${callsHtml || '<div class="plan-no-data">Нет плановых данных для этого периода</div>'}</div>
+    <div class="plans-card"><div class="plans-card-title">💰 План оплат</div>${paymentsHtml || '<div class="plan-no-data">Нет плановых данных для этого периода</div>'}</div>`;
 }
 
 function buildCallsPlansHtml(callPlans) {
   if (!callPlans.length) return '';
-  
   return callPlans.map(p => {
-    const plan = p.plan;
-    const fact = p.fact;
+    const plan = p.plan, fact = p.fact;
     const pctReal = plan > 0 ? Math.round(fact / plan * 100) : 0;
     const barW = Math.min(pctReal, 100);
     const color = pctReal >= 100 ? '#22c55e' : pctReal >= 70 ? '#ffd93d' : '#ff6b6b';
-    
-    return `<div class="plan-row">
-      <div class="plan-row-header">
-        <div class="plan-manager">${p.manager}</div>
-        <div class="plan-numbers">
-          <span class="plan-fact" style="color:${color}">${fact.toLocaleString('ru-RU')}</span>
-          <span class="plan-of">/ ${plan.toLocaleString('ru-RU')}</span>
-          <span class="plan-pct-badge" style="background:${color}22;color:${color}">${pctReal}%</span>
-        </div>
-      </div>
-      <div class="plan-bar-bg">
-        <div class="plan-bar-fill" style="width:${barW}%;background:${color}"></div>
-      </div>
-    </div>`;
+    return `<div class="plan-row"><div class="plan-row-header"><div class="plan-manager">${p.manager}</div><div class="plan-numbers"><span class="plan-fact" style="color:${color}">${fact.toLocaleString('ru-RU')}</span><span class="plan-of">/ ${plan.toLocaleString('ru-RU')}</span><span class="plan-pct-badge" style="background:${color}22;color:${color}">${pctReal}%</span></div></div><div class="plan-bar-bg"><div class="plan-bar-fill" style="width:${barW}%;background:${color}"></div></div></div>`;
   }).join('');
 }
 
 function buildPayPlansHtml(permPlans, newPlans) {
-  // Объединяем постоянные и новые планы по менеджерам
   const managersSet = new Set();
   permPlans.forEach(p => managersSet.add(p.manager));
   newPlans.forEach(p => managersSet.add(p.manager));
-  
   if (managersSet.size === 0) return '';
-  
   const managers = Array.from(managersSet).sort();
-  
   return managers.map(manager => {
     const permPlan = permPlans.find(p => p.manager === manager);
     const newPlan = newPlans.find(p => p.manager === manager);
-    
     const permPlanVal = permPlan ? permPlan.plan : 0;
     const newPlanVal = newPlan ? newPlan.plan : 0;
     const totalPlan = permPlanVal + newPlanVal;
-    
     const permFact = permPlan ? permPlan.fact : 0;
     const newFact = newPlan ? newPlan.fact : 0;
     const totalFact = permFact + newFact;
-    
     const pctReal = totalPlan > 0 ? Math.round(totalFact / totalPlan * 100) : 0;
     const barW = Math.min(pctReal, 100);
     const color = pctReal >= 100 ? '#22c55e' : pctReal >= 70 ? '#ffd93d' : '#ff6b6b';
-    
     let subrowsHtml = '';
     if (permPlanVal > 0) {
       const permPct = permPlanVal > 0 ? Math.round(permFact / permPlanVal * 100) : 0;
@@ -861,23 +776,7 @@ function buildPayPlansHtml(permPlans, newPlans) {
       const newPct = newPlanVal > 0 ? Math.round(newFact / newPlanVal * 100) : 0;
       subrowsHtml += `<span>🆕 Новые: <span class="newc">${fmtRub(newFact)}</span> / ${fmtRub(newPlanVal)} (${newPct}%)</span>`;
     }
-    
-    return `<div class="plan-row">
-      <div class="plan-row-header">
-        <div class="plan-manager">${manager}</div>
-        <div class="plan-numbers">
-          <span class="plan-fact" style="color:${color}">${fmtRub(totalFact)}</span>
-          <span class="plan-of">/ ${fmtRub(totalPlan)}</span>
-          <span class="plan-pct-badge" style="background:${color}22;color:${color}">${pctReal}%</span>
-        </div>
-      </div>
-      <div class="plan-bar-bg">
-        <div class="plan-bar-fill" style="width:${barW}%;background:${color}"></div>
-      </div>
-      <div class="plan-subrow">
-        ${subrowsHtml}
-      </div>
-    </div>`;
+    return `<div class="plan-row"><div class="plan-row-header"><div class="plan-manager">${manager}</div><div class="plan-numbers"><span class="plan-fact" style="color:${color}">${fmtRub(totalFact)}</span><span class="plan-of">/ ${fmtRub(totalPlan)}</span><span class="plan-pct-badge" style="background:${color}22;color:${color}">${pctReal}%</span></div></div><div class="plan-bar-bg"><div class="plan-bar-fill" style="width:${barW}%;background:${color}"></div></div><div class="plan-subrow">${subrowsHtml}</div></div>`;
   }).join('');
 }
 
