@@ -387,6 +387,10 @@
       <div class="chart-title">Деньги получены (сделки) по менеджерам</div>
       <div class="chart-wrap"><canvas id="chartDeals"></canvas></div>
     </div>
+    <div class="chart-card full">
+      <div class="chart-title">Динамика звонков по дням</div>
+      <div class="chart-wrap"><canvas id="chartTimeline"></canvas></div>
+    </div>
     <div class="chart-card">
       <div class="chart-title">Конверсия воронки, %</div>
       <div class="chart-wrap"><canvas id="chartConv"></canvas></div>
@@ -411,9 +415,11 @@
 </div>
 
 <script>
-const SHEET_ID = '1UegkHK1UcJXKVmyaH-o_JxVJIod-Dj_cWxqpxpStaP4';
-const SHEET_GID = '221690997';
-const PLANS_GID = '1249869634';
+// ========== НАСТРОЙКА ИСТОЧНИКОВ ДАННЫХ ==========
+// Основной лист: "данные для дашборда лукер" (gid=1998838779)
+const DATA_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSVe2hKz4SuTinpqpi7tkZGk79MyTo_rMX8sPy6zYp5WnSdOakZOfq-ACWOeOUfVDDAUyWBXwBRJmQp/pub?gid=1998838779&single=true&output=csv';
+// Лист с планами: "📅 Настройка планов" (gid=1249869634)
+const PLANS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSVe2hKz4SuTinpqpi7tkZGk79MyTo_rMX8sPy6zYp5WnSdOakZOfq-ACWOeOUfVDDAUyWBXwBRJmQp/pub?gid=1249869634&single=true&output=csv';
 const AUTO_REFRESH_MS = 3 * 60 * 60 * 1000;
 
 let allRows = [];
@@ -439,25 +445,38 @@ function periodToMMYYYY(period) {
   return period;
 }
 
+function parseCSVLine(line) {
+  const result = [];
+  let inQuotes = false;
+  let current = '';
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
 async function loadData() {
   document.getElementById('loadingOverlay').style.display = 'flex';
   document.getElementById('errorBanner').style.display = 'none';
   try {
-    await loadPlans();
-    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${SHEET_GID}&t=${Date.now()}`;
-    const res = await fetch(url);
-    const text = await res.text();
-    const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/);
-    if (!match) throw new Error('Не удалось получить данные.');
-    const json = JSON.parse(match[1]);
-    parseRows(json.table);
+    await loadPlansFromCSV();
+    await loadMainDataFromCSV();
     populateFilters();
     render();
     document.getElementById('lastUpdate').textContent = 'Обновлено: ' + new Date().toLocaleTimeString('ru-RU');
     document.getElementById('statusDot').textContent = 'Подключено';
     document.getElementById('statusDot').style.color = 'var(--green)';
   } catch (e) {
-    document.getElementById('errorBanner').textContent = '⚠️ ' + e.message;
+    document.getElementById('errorBanner').textContent = '⚠️ Ошибка загрузки: ' + e.message;
     document.getElementById('errorBanner').style.display = 'block';
     document.getElementById('statusDot').textContent = 'Ошибка';
     document.getElementById('statusDot').style.color = 'var(--accent3)';
@@ -466,17 +485,107 @@ async function loadData() {
   }
 }
 
-function parseRows(table) {
-  const cols = table.cols.map(c => c.label || c.id);
+async function loadMainDataFromCSV() {
+  const response = await fetch(DATA_CSV_URL);
+  const csvText = await response.text();
+  const lines = csvText.split(/\r?\n/);
+  if (lines.length < 2) return;
+  
+  const headers = parseCSVLine(lines[0]);
+  console.log('📋 Заголовки CSV (данные):', headers);
+  
   allRows = [];
-  for (const row of table.rows) {
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseCSVLine(lines[i]);
+    if (values.length < headers.length) continue;
     const obj = {};
-    cols.forEach((col, i) => {
-      const cell = row.c ? row.c[i] : null;
-      obj[col] = cell ? (cell.f ?? cell.v ?? '') : '';
+    headers.forEach((h, idx) => {
+      obj[h] = values[idx] || '';
     });
     if (obj['Дата'] || obj['Менеджер']) allRows.push(obj);
   }
+  
+  console.log('✅ Загружено строк:', allRows.length);
+  
+  const uniqueStages = [...new Set(allRows.map(r => r['Этап воронки']))];
+  console.log('📊 Уникальные этапы воронки:', uniqueStages);
+  
+  const callRows = allRows.filter(r => r['Этап воронки'] === 'Количество звонков');
+  console.log('📞 Строки с "Количество звонков":', callRows.length);
+}
+
+async function loadPlansFromCSV() {
+  const response = await fetch(PLANS_CSV_URL);
+  const csvText = await response.text();
+  const lines = csvText.split(/\r?\n/);
+  if (lines.length < 2) return;
+  
+  const callsMap = new Map();
+  const permPayMap = new Map();
+  const newPayMap = new Map();
+  
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseCSVLine(lines[i]);
+    if (values.length < 6) continue;
+    
+    const date = values[0] || '';
+    const monthYear = values[2] || '';
+    const manager = values[3] || '';
+    const planVal = parseNum(values[4]);
+    const factVal = parseNum(values[5]);
+    
+    if (date && monthYear && manager && (planVal > 0 || factVal > 0)) {
+      const monthKey = normalizeMonthYear(monthYear);
+      if (monthKey) {
+        const key = `${manager}|${monthKey}`;
+        const existing = callsMap.get(key) || { manager, monthKey, plan: 0, fact: 0 };
+        existing.plan += planVal;
+        existing.fact += factVal;
+        callsMap.set(key, existing);
+      }
+    }
+    
+    if (values.length >= 13) {
+      const date2 = values[6] || '';
+      const monthYear2 = values[8] || '';
+      const manager2 = values[9] || '';
+      const payType = values[10] || '';
+      const planVal2 = parseNum(values[11]);
+      const factVal2 = parseNum(values[12]);
+      
+      if (date2 && monthYear2 && manager2 && payType && (planVal2 > 0 || factVal2 > 0)) {
+        const monthKey = normalizeMonthYear(monthYear2);
+        if (monthKey) {
+          const key = `${manager2}|${monthKey}`;
+          if (payType === 'Постоянные') {
+            const existing = permPayMap.get(key) || { manager: manager2, monthKey, plan: 0, fact: 0 };
+            existing.plan += planVal2;
+            existing.fact += factVal2;
+            permPayMap.set(key, existing);
+          } else if (payType === 'Новые') {
+            const existing = newPayMap.get(key) || { manager: manager2, monthKey, plan: 0, fact: 0 };
+            existing.plan += planVal2;
+            existing.fact += factVal2;
+            newPayMap.set(key, existing);
+          }
+        }
+      }
+    }
+  }
+  
+  planRows.calls = Array.from(callsMap.values());
+  planRows.payments.permanent = Array.from(permPayMap.values());
+  planRows.payments.new = Array.from(newPayMap.values());
+}
+
+function normalizeMonthYear(monthYear) {
+  const parts = String(monthYear).trim().split(/\s+/);
+  if (parts.length !== 2) return null;
+  const monthName = parts[0].toLowerCase();
+  const year = parts[1];
+  const monthNum = MONTHS_RU[monthName];
+  if (!monthNum || !year) return null;
+  return String(monthNum).padStart(2, '0') + '.' + year;
 }
 
 function populateFilters() {
@@ -518,7 +627,7 @@ function filtered() {
   );
 }
 
-function render() { const rows = filtered(); renderKPI(rows); renderPayments(rows); renderChartPayPerm(rows); renderChartPayNew(rows); renderFunnel(rows); renderChartCalls(rows); renderChartDeals(rows); renderConversion(rows); renderReject(rows); renderTable(rows); renderPlans(); }
+function render() { const rows = filtered(); renderKPI(rows); renderPayments(rows); renderChartPayPerm(rows); renderChartPayNew(rows); renderFunnel(rows); renderChartCalls(rows); renderChartDeals(rows); renderTimeline(rows); renderConversion(rows); renderReject(rows); renderTable(rows); renderPlans(); }
 
 function sumStage(rows, stage, manager) { return rows.filter(r => r['Этап воронки'] === stage && (!manager || r['Менеджер'] === manager)).reduce((s, r) => s + parseNum(r['Количество/Сумма']), 0); }
 function sumPayType(rows, type) { return rows.filter(r => (r['Этап воронки'] || '').startsWith('Деньги получены (сумма') && (!type || (r['Этап воронки'] || '').toLowerCase().includes(type.toLowerCase()))).reduce((s, r) => s + parseNum(r['Количество/Сумма']), 0); }
@@ -595,6 +704,56 @@ function renderChartDeals(rows) {
   makeChart('chartDeals', 'bar', { labels: mgrs, datasets: [{ label: 'Деньги получены', data: vals, backgroundColor: mgrs.map((_, i) => COLORS[(i+2)%COLORS.length] + 'cc'), borderRadius: 6 }] });
 }
 
+function renderTimeline(rows) {
+  const byDate = {};
+  
+  const callRows = rows.filter(r => r['Этап воронки'] === 'Количество звонков');
+  
+  console.log('📞 renderTimeline: найдено звонков =', callRows.length);
+  
+  callRows.forEach(r => { 
+    const d = String(r['Дата'] || '').trim(); 
+    if (d) {
+      let dateStr = d;
+      if (d.includes('.')) {
+        const parts = d.split('.');
+        if (parts.length === 3) {
+          dateStr = `${parts[0]}.${parts[1]}.${parts[2]}`;
+        }
+      }
+      byDate[dateStr] = (byDate[dateStr] || 0) + parseNum(r['Количество/Сумма']); 
+    }
+  });
+  
+  console.log('📅 Данные по дням для графика:', byDate);
+  
+  const dates = Object.keys(byDate).sort((a,b) => {
+    const da = a.split('.'), db = b.split('.');
+    return new Date(da[2], da[1]-1, da[0]) - new Date(db[2], db[1]-1, db[0]);
+  });
+  
+  if (dates.length === 0) {
+    makeChart('chartTimeline', 'line', { 
+      labels: ['Нет данных о звонках'], 
+      datasets: [{ label: 'Звонки', data: [0], borderColor: '#6c63ff' }] 
+    });
+    return;
+  }
+  
+  makeChart('chartTimeline', 'line', { 
+    labels: dates, 
+    datasets: [{ 
+      label: 'Звонки', 
+      data: dates.map(d => byDate[d]), 
+      borderColor: '#6c63ff', 
+      backgroundColor: 'rgba(108,99,255,.12)', 
+      tension: .35, 
+      fill: true, 
+      pointRadius: 4 
+    }] 
+  });
+}
+
 function renderConversion(rows) {
   const vals = FUNNEL_STAGES.map(s => sumStage(rows, s));
   const base = vals[0] || 1;
@@ -616,95 +775,8 @@ function renderTable(rows) {
     const stage = r['Этап воронки'] || '';
     const key = Object.keys(badgeMap).find(k => stage.startsWith(k));
     const badgeCls = key ? badgeMap[key] : 'badge-purple';
-    return `<tr><td>${r['Дата'] || '—'}</td><td>${r['Менеджер'] || '—'}</td><td><span class="badge ${badgeCls}">${stage}</span></td><td>${r['Количество/Сумма'] || '—'}</td><td>${r['месяц/год'] || '—'}</td><td>${r['неделя'] || '—'}</td></tr>`;
+    return `<tr><td>${r['Дата'] || '—'}</td><td>${r['Менеджер'] || '—'}</td><td><span class="badge ${badgeCls}">${stage}</span></td><td>${r['Количество/Сумма'] || '—'}</td><td>${r['месяц/год'] || '—'}</td><td>${r['неделя'] || '—'}</td></td>`;
   }).join('');
-}
-
-async function loadPlans() {
-  try {
-    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${PLANS_GID}&t=${Date.now()}`;
-    const res = await fetch(url);
-    const text = await res.text();
-    const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/);
-    if (!match) return;
-    const json = JSON.parse(match[1]);
-    parsePlansV4(json.table);
-  } catch (e) {
-    console.warn('Plans load error:', e);
-  }
-}
-
-function parsePlansV4(table) {
-  const callsMap = new Map();
-  const permPayMap = new Map();
-  const newPayMap = new Map();
-  
-  for (const row of table.rows) {
-    if (!row.c) continue;
-    const cells = row.c.map(c => c ? (c.f ?? c.v ?? '') : '');
-    
-    if (cells.length >= 6) {
-      const date = String(cells[0] || '').trim();
-      const week = String(cells[1] || '').trim();
-      const monthYear = String(cells[2] || '').trim();
-      const manager = String(cells[3] || '').trim();
-      const planVal = parseNum(cells[4]);
-      const factVal = parseNum(cells[5]);
-      
-      if (date && monthYear && manager && (planVal > 0 || factVal > 0)) {
-        const monthKey = normalizeMonthYear(monthYear);
-        if (monthKey) {
-          const key = `${manager}|${monthKey}`;
-          const existing = callsMap.get(key) || { manager, monthKey, plan: 0, fact: 0 };
-          existing.plan += planVal;
-          existing.fact += factVal;
-          callsMap.set(key, existing);
-        }
-      }
-    }
-    
-    if (cells.length >= 13) {
-      const date = String(cells[6] || '').trim();
-      const week = String(cells[7] || '').trim();
-      const monthYear = String(cells[8] || '').trim();
-      const manager = String(cells[9] || '').trim();
-      const payType = String(cells[10] || '').trim();
-      const planVal = parseNum(cells[11]);
-      const factVal = parseNum(cells[12]);
-      
-      if (date && monthYear && manager && payType && (planVal > 0 || factVal > 0)) {
-        const monthKey = normalizeMonthYear(monthYear);
-        if (monthKey) {
-          const key = `${manager}|${monthKey}`;
-          if (payType === 'Постоянные') {
-            const existing = permPayMap.get(key) || { manager, monthKey, plan: 0, fact: 0 };
-            existing.plan += planVal;
-            existing.fact += factVal;
-            permPayMap.set(key, existing);
-          } else if (payType === 'Новые') {
-            const existing = newPayMap.get(key) || { manager, monthKey, plan: 0, fact: 0 };
-            existing.plan += planVal;
-            existing.fact += factVal;
-            newPayMap.set(key, existing);
-          }
-        }
-      }
-    }
-  }
-  
-  planRows.calls = Array.from(callsMap.values());
-  planRows.payments.permanent = Array.from(permPayMap.values());
-  planRows.payments.new = Array.from(newPayMap.values());
-}
-
-function normalizeMonthYear(monthYear) {
-  const parts = String(monthYear).trim().split(/\s+/);
-  if (parts.length !== 2) return null;
-  const monthName = parts[0].toLowerCase();
-  const year = parts[1];
-  const monthNum = MONTHS_RU[monthName];
-  if (!monthNum || !year) return null;
-  return String(monthNum).padStart(2, '0') + '.' + year;
 }
 
 function renderPlans() {
