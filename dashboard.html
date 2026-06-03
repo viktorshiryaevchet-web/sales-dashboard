@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Дашборд продаж</title>
+  <title>Дашборд продаж — с AI-советником</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -18,6 +18,7 @@
       --muted: #8892a4;
       --green: #22c55e;
       --orange: #f97316;
+      --ai-bg: linear-gradient(135deg, #1a1d2e, #0f1222);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -101,6 +102,86 @@
     .kpi-card.c2::before { background: linear-gradient(90deg,#00d4aa,#34d399); }
     .kpi-card.c3::before { background: linear-gradient(90deg,#ff6b6b,#fb7185); }
     .kpi-card.c5::before { background: linear-gradient(90deg,#38bdf8,#67e8f9); }
+    
+    /* AI советник */
+    .ai-advisor {
+      background: var(--ai-bg);
+      border: 1px solid rgba(108,99,255,0.3);
+      border-radius: 16px;
+      padding: 20px 24px;
+      margin-bottom: 28px;
+      position: relative;
+      overflow: hidden;
+    }
+    .ai-advisor::before {
+      content: '🧠';
+      position: absolute;
+      right: 20px;
+      bottom: 10px;
+      font-size: 60px;
+      opacity: 0.08;
+      pointer-events: none;
+    }
+    .ai-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .ai-header span {
+      background: rgba(108,99,255,0.2);
+      padding: 6px 12px;
+      border-radius: 40px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #a78bfa;
+    }
+    .ai-header h3 {
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .ai-insights {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .insight-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      font-size: 13px;
+      line-height: 1.4;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .insight-icon {
+      font-size: 18px;
+      min-width: 32px;
+    }
+    .insight-text {
+      color: #cbd5e1;
+    }
+    .insight-text strong {
+      color: #e2e8f0;
+    }
+    .insight-badge {
+      background: rgba(34,197,94,0.15);
+      color: #4ade80;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+    .insight-badge.warning {
+      background: rgba(249,115,22,0.15);
+      color: #fb923c;
+    }
+    .insight-badge.danger {
+      background: rgba(255,107,107,0.15);
+      color: #fca5a5;
+    }
+    
     .pay-block {
       background: var(--card);
       border: 1px solid var(--border);
@@ -350,6 +431,17 @@
   <div class="section-title">⚡ Ключевые показатели</div>
   <div class="kpi-grid" id="kpiGrid"></div>
 
+  <!-- БЛОК AI-СОВЕТНИКА -->
+  <div class="ai-advisor" id="aiAdvisor">
+    <div class="ai-header">
+      <span>🧠 AI INSIGHTS</span>
+      <h3>Аналитика и рекомендации</h3>
+    </div>
+    <div class="ai-insights" id="aiInsights">
+      <div class="insight-item"><div class="insight-icon">🔄</div><div class="insight-text">Анализирую данные...</div></div>
+    </div>
+  </div>
+
   <div class="section-title">💰 Оплаты (суммы)</div>
   <div class="pay-block">
     <div class="pay-grid" id="payGrid"></div>
@@ -416,9 +508,7 @@
 
 <script>
 // ========== НАСТРОЙКА ИСТОЧНИКОВ ДАННЫХ ==========
-// Основной лист: "данные для дашборда лукер" (gid=1998838779)
 const DATA_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSVe2hKz4SuTinpqpi7tkZGk79MyTo_rMX8sPy6zYp5WnSdOakZOfq-ACWOeOUfVDDAUyWBXwBRJmQp/pub?gid=1998838779&single=true&output=csv';
-// Лист с планами: "📅 Настройка планов" (gid=1249869634)
 const PLANS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSVe2hKz4SuTinpqpi7tkZGk79MyTo_rMX8sPy6zYp5WnSdOakZOfq-ACWOeOUfVDDAUyWBXwBRJmQp/pub?gid=1249869634&single=true&output=csv';
 const AUTO_REFRESH_MS = 3 * 60 * 60 * 1000;
 
@@ -627,7 +717,22 @@ function filtered() {
   );
 }
 
-function render() { const rows = filtered(); renderKPI(rows); renderPayments(rows); renderChartPayPerm(rows); renderChartPayNew(rows); renderFunnel(rows); renderChartCalls(rows); renderChartDeals(rows); renderTimeline(rows); renderConversion(rows); renderReject(rows); renderTable(rows); renderPlans(); }
+function render() { 
+  const rows = filtered(); 
+  renderKPI(rows); 
+  renderPayments(rows); 
+  renderChartPayPerm(rows); 
+  renderChartPayNew(rows); 
+  renderFunnel(rows); 
+  renderChartCalls(rows); 
+  renderChartDeals(rows); 
+  renderTimeline(rows); 
+  renderConversion(rows); 
+  renderReject(rows); 
+  renderTable(rows); 
+  renderPlans();
+  renderAIAdvisor(rows);
+}
 
 function sumStage(rows, stage, manager) { return rows.filter(r => r['Этап воронки'] === stage && (!manager || r['Менеджер'] === manager)).reduce((s, r) => s + parseNum(r['Количество/Сумма']), 0); }
 function sumPayType(rows, type) { return rows.filter(r => (r['Этап воронки'] || '').startsWith('Деньги получены (сумма') && (!type || (r['Этап воронки'] || '').toLowerCase().includes(type.toLowerCase()))).reduce((s, r) => s + parseNum(r['Количество/Сумма']), 0); }
@@ -706,11 +811,7 @@ function renderChartDeals(rows) {
 
 function renderTimeline(rows) {
   const byDate = {};
-  
   const callRows = rows.filter(r => r['Этап воронки'] === 'Количество звонков');
-  
-  console.log('📞 renderTimeline: найдено звонков =', callRows.length);
-  
   callRows.forEach(r => { 
     const d = String(r['Дата'] || '').trim(); 
     if (d) {
@@ -724,34 +825,15 @@ function renderTimeline(rows) {
       byDate[dateStr] = (byDate[dateStr] || 0) + parseNum(r['Количество/Сумма']); 
     }
   });
-  
-  console.log('📅 Данные по дням для графика:', byDate);
-  
   const dates = Object.keys(byDate).sort((a,b) => {
     const da = a.split('.'), db = b.split('.');
     return new Date(da[2], da[1]-1, da[0]) - new Date(db[2], db[1]-1, db[0]);
   });
-  
   if (dates.length === 0) {
-    makeChart('chartTimeline', 'line', { 
-      labels: ['Нет данных о звонках'], 
-      datasets: [{ label: 'Звонки', data: [0], borderColor: '#6c63ff' }] 
-    });
+    makeChart('chartTimeline', 'line', { labels: ['Нет данных о звонках'], datasets: [{ label: 'Звонки', data: [0], borderColor: '#6c63ff' }] });
     return;
   }
-  
-  makeChart('chartTimeline', 'line', { 
-    labels: dates, 
-    datasets: [{ 
-      label: 'Звонки', 
-      data: dates.map(d => byDate[d]), 
-      borderColor: '#6c63ff', 
-      backgroundColor: 'rgba(108,99,255,.12)', 
-      tension: .35, 
-      fill: true, 
-      pointRadius: 4 
-    }] 
-  });
+  makeChart('chartTimeline', 'line', { labels: dates, datasets: [{ label: 'Звонки', data: dates.map(d => byDate[d]), borderColor: '#6c63ff', backgroundColor: 'rgba(108,99,255,.12)', tension: .35, fill: true, pointRadius: 4 }] });
 }
 
 function renderConversion(rows) {
@@ -775,7 +857,7 @@ function renderTable(rows) {
     const stage = r['Этап воронки'] || '';
     const key = Object.keys(badgeMap).find(k => stage.startsWith(k));
     const badgeCls = key ? badgeMap[key] : 'badge-purple';
-    return `<tr><td>${r['Дата'] || '—'}</td><td>${r['Менеджер'] || '—'}</td><td><span class="badge ${badgeCls}">${stage}</span></td><td>${r['Количество/Сумма'] || '—'}</td><td>${r['месяц/год'] || '—'}</td><td>${r['неделя'] || '—'}</td></td>`;
+    return `<tr><td>${r['Дата'] || '—'}</td><td>${r['Менеджер'] || '—'}</td><td><span class="badge ${badgeCls}">${stage}</span></td><td>${r['Количество/Сумма'] || '—'}</td><td>${r['месяц/год'] || '—'}</td><td>${r['неделя'] || '—'}</td></tr>`;
   }).join('');
 }
 
@@ -838,6 +920,108 @@ function buildPayPlansHtml(permPlans, newPlans) {
     }
     return `<div class="plan-row"><div class="plan-row-header"><div class="plan-manager">${manager}</div><div class="plan-numbers"><span class="plan-fact" style="color:${color}">${fmtRub(totalFact)}</span><span class="plan-of">/ ${fmtRub(totalPlan)}</span><span class="plan-pct-badge" style="background:${color}22;color:${color}">${pctReal}%</span></div></div><div class="plan-bar-bg"><div class="plan-bar-fill" style="width:${barW}%;background:${color}"></div></div><div class="plan-subrow">${subrowsHtml}</div></div>`;
   }).join('');
+}
+
+// ========== AI-СОВЕТНИК (ЛОКАЛЬНАЯ АНАЛИТИКА) ==========
+function renderAIAdvisor(rows) {
+  if (!rows.length) {
+    document.getElementById('aiInsights').innerHTML = '<div class="insight-item"><div class="insight-icon">⚠️</div><div class="insight-text">Нет данных для анализа</div></div>';
+    return;
+  }
+  
+  const insights = [];
+  
+  // 1. Анализ конверсии
+  const calls = sumStage(rows, 'Количество звонков');
+  const orders = sumStage(rows, 'Новый заказ');
+  const paid = sumStage(rows, 'Деньги получены');
+  const callToOrderConv = calls > 0 ? pct(orders, calls) : 0;
+  const orderToPaidConv = orders > 0 ? pct(paid, orders) : 0;
+  
+  if (callToOrderConv < 30) {
+    insights.push({ icon: '⚠️', text: `Низкая конверсия звонков в заказы (${callToOrderConv}%). Рекомендуем: проверить скрипт продаж, проработать возражения.`, type: 'danger' });
+  } else if (callToOrderConv < 50) {
+    insights.push({ icon: '📉', text: `Конверсия звонков → заказы: ${callToOrderConv}% (средняя). Можно улучшить до 55% через дополнительные материалы и кейсы.`, type: 'warning' });
+  } else {
+    insights.push({ icon: '🔥', text: `Конверсия звонков → заказы: ${callToOrderConv}% — отличный результат! Поддерживайте качество работы.`, type: 'good' });
+  }
+  
+  if (orderToPaidConv < 50 && orders > 0) {
+    insights.push({ icon: '💰', text: `Теряется ${100 - orderToPaidConv}% заказов на этапе оплаты. Проверьте процесс выставления счетов и работу с отказниками.`, type: 'danger' });
+  }
+  
+  // 2. Анализ планов
+  const f = getFilters();
+  let targetMonthStr = f.period ? periodToMMYYYY(f.period) : (() => { const d = new Date(); return String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear(); })();
+  let callPlans = planRows.calls.filter(p => p.monthKey === targetMonthStr);
+  if (f.manager) callPlans = callPlans.filter(p => p.manager === f.manager);
+  
+  for (const plan of callPlans) {
+    const factRows = allRows.filter(r => r['Менеджер'] === plan.manager && r['Этап воронки'] === 'Количество звонков');
+    const fact = factRows.reduce((s, r) => s + parseNum(r['Количество/Сумма']), 0);
+    const pctReal = plan.plan > 0 ? Math.round(fact / plan.plan * 100) : 0;
+    if (pctReal < 50 && plan.plan > 0) {
+      insights.push({ icon: '🎯', text: `${plan.manager}: план звонков выполнен на ${pctReal}%. Нужно нарастить активность или пересмотреть план.`, type: 'danger' });
+    } else if (pctReal < 80 && plan.plan > 0) {
+      insights.push({ icon: '⏳', text: `${plan.manager}: план звонков выполнен на ${pctReal}%. Ещё есть время добрать нужные цифры.`, type: 'warning' });
+    } else if (pctReal >= 100 && plan.plan > 0) {
+      insights.push({ icon: '🏆', text: `${plan.manager}: перевыполнил(а) план звонков на ${pctReal - 100}% — отличная работа!`, type: 'good' });
+    }
+  }
+  
+  // 3. Анализ оплат по менеджерам
+  const permPay = planRows.payments.permanent.filter(p => p.monthKey === targetMonthStr);
+  const newPay = planRows.payments.new.filter(p => p.monthKey === targetMonthStr);
+  const allPayPlans = [...permPay, ...newPay];
+  if (f.manager) {
+    const filteredPerm = permPay.filter(p => p.manager === f.manager);
+    const filteredNew = newPay.filter(p => p.manager === f.manager);
+    for (const plan of filteredPerm) {
+      const pctReal = plan.plan > 0 ? Math.round(plan.fact / plan.plan * 100) : 0;
+      if (pctReal < 50) insights.push({ icon: '💸', text: `${plan.manager}: план по постоянным оплатам выполнен на ${pctReal}%. Требуется активизация работы с базой.`, type: 'danger' });
+      else if (pctReal >= 100) insights.push({ icon: '💎', text: `${plan.manager}: перевыполнил(а) план по постоянным клиентам!`, type: 'good' });
+    }
+    for (const plan of filteredNew) {
+      const pctReal = plan.plan > 0 ? Math.round(plan.fact / plan.plan * 100) : 0;
+      if (pctReal < 50) insights.push({ icon: '🆕', text: `${plan.manager}: план по новым клиентам выполнен на ${pctReal}%. Усилить привлечение.`, type: 'danger' });
+    }
+  } else {
+    // Общая аналитика по всем
+    const totalPlanPerm = permPay.reduce((s, p) => s + p.plan, 0);
+    const totalFactPerm = permPay.reduce((s, p) => s + p.fact, 0);
+    const totalPlanNew = newPay.reduce((s, p) => s + p.plan, 0);
+    const totalFactNew = newPay.reduce((s, p) => s + p.fact, 0);
+    if (totalPlanPerm > 0 && totalFactPerm / totalPlanPerm < 0.5) {
+      insights.push({ icon: '📊', text: `Общий план по постоянным оплатам выполнен на ${Math.round(totalFactPerm / totalPlanPerm * 100)}%. Нужно усилить работу с текущей базой.`, type: 'warning' });
+    }
+    if (totalPlanNew > 0 && totalFactNew / totalPlanNew < 0.5) {
+      insights.push({ icon: '🎯', text: `План по новым клиентам выполнен всего на ${Math.round(totalFactNew / totalPlanNew * 100)}%. Требуется больше лидов и активных продаж.`, type: 'danger' });
+    }
+  }
+  
+  // 4. Анализ причин отказов
+  const reasons = {};
+  rows.forEach(r => { const reason = r['Причина отказа']; if (reason) reasons[reason] = (reasons[reason] || 0) + (parseNum(r['Причина отказа количество']) || 1); });
+  const sortedReasons = Object.entries(reasons).sort((a, b) => b[1] - a[1]);
+  if (sortedReasons.length > 0) {
+    const topReason = sortedReasons[0];
+    insights.push({ icon: '❌', text: `Частая причина отказа: "${topReason[0]}" (${topReason[1]} раз). Проработайте возражения по этой теме.`, type: 'warning' });
+  }
+  
+  // 5. Общий вывод
+  if (insights.length === 0) {
+    insights.push({ icon: '✅', text: 'Все показатели в норме! Отличная работа команды.', type: 'good' });
+  }
+  
+  // Ограничим до 7 советов
+  const topInsights = insights.slice(0, 7);
+  
+  document.getElementById('aiInsights').innerHTML = topInsights.map(i => `
+    <div class="insight-item">
+      <div class="insight-icon">${i.icon}</div>
+      <div class="insight-text">${i.text}</div>
+    </div>
+  `).join('');
 }
 
 loadData();
