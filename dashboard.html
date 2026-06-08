@@ -517,8 +517,7 @@ let planRows = { calls: [], payments: { permanent: [], new: [] } };
 let charts = {};
 
 const COLORS = ['#6c63ff','#00d4aa','#ff6b6b','#ffd93d','#38bdf8','#f97316','#a78bfa','#34d399'];
-const FUNNEL_STAGES = ['Новый заказ', 'Квалификация', 'Согласование условий', 'Деньги получены', 'Проект Работаем'];
-const FUNNEL_COLORS = ['#818cf8','#38bdf8','#00d4aa','#22c55e','#4ade80'];
+const FUNNEL_COLORS = ['#818cf8','#38bdf8','#00d4aa','#22c55e','#4ade80','#f59e0b','#ef4444','#a855f7'];
 const MONTHS_RU = {'январь':1,'февраль':2,'март':3,'апрель':4,'май':5,'июнь':6,'июль':7,'август':8,'сентябрь':9,'октябрь':10,'ноябрь':11,'декабрь':12};
 
 function parseNum(v) { return (v === null || v === undefined || v === '' || v === '—') ? 0 : parseFloat(String(v).replace(/[^\d.-]/g, '')) || 0; }
@@ -597,7 +596,7 @@ async function loadMainDataFromCSV() {
   
   console.log('✅ Загружено строк:', allRows.length);
   
-  const uniqueStages = [...new Set(allRows.map(r => r['Этап воронки']))];
+  const uniqueStages = [...new Set(allRows.map(r => r['Этап воронки']).filter(Boolean))];
   console.log('📊 Уникальные этапы воронки:', uniqueStages);
   
   const callRows = allRows.filter(r => r['Этап воронки'] === 'Количество звонков');
@@ -787,14 +786,75 @@ function renderChartPayNew(rows) {
   makeChart('chartPayNew', 'bar', { labels: mgrs, datasets: [{ label: 'Новые, ₽', data: vals, backgroundColor: '#f97316bb', borderRadius: 6 }] }, { scales: { y: { ticks: { callback: v => v.toLocaleString('ru-RU') + ' ₽' } } } });
 }
 
+// ========== ДИНАМИЧЕСКАЯ ВОРОНКА (автоопределение этапов) ==========
+function getUniqueStages(rows) {
+  // Получаем все уникальные этапы из данных
+  const allStages = [...new Set(rows.map(r => r['Этап воронки']).filter(Boolean))];
+  // Исключаем служебные этапы (звонки и суммы оплат)
+  const excludeList = ['Количество звонков', 'Деньги получены (сумма оплат) Постоянные', 'Деньги получены (сумма оплат) Новые'];
+  let stages = allStages.filter(s => !excludeList.includes(s));
+  
+  // Приоритетный порядок (можно настроить под себя)
+  const priorityOrder = ['Новый заказ', 'Квалификация', 'Подготовка КП', 'Согласование условий', 'Деньги получены', 'Проект Работаем'];
+  
+  // Сортируем по приоритету, остальные в конец в алфавитном порядке
+  stages.sort((a, b) => {
+    const idxA = priorityOrder.indexOf(a);
+    const idxB = priorityOrder.indexOf(b);
+    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+    if (idxA !== -1) return -1;
+    if (idxB !== -1) return 1;
+    return a.localeCompare(b);
+  });
+  
+  return stages;
+}
+
 function renderFunnel(rows) {
-  const vals = FUNNEL_STAGES.map(s => sumStage(rows, s));
-  const max = vals[0] || 1;
-  document.getElementById('funnelWrap').innerHTML = FUNNEL_STAGES.map((s, i) => {
-    const w = Math.round(vals[i] / max * 100);
-    const c = vals[0] > 0 ? pct(vals[i], vals[0]) : 0;
-    return `<div class="funnel-row"><div class="funnel-label">${s}</div><div class="funnel-bar-bg"><div class="funnel-bar" style="width:${w}%;background:${FUNNEL_COLORS[i]}">${vals[i] > 0 ? vals[i] : ''}</div></div><div class="funnel-val">${vals[i]}</div><div class="conv">${c}%</div></div>`;
+  const stages = getUniqueStages(rows);
+  if (stages.length === 0) {
+    document.getElementById('funnelWrap').innerHTML = '<div class="funnel-row">Нет данных для воронки</div>';
+    return;
+  }
+  
+  const vals = stages.map(s => sumStage(rows, s));
+  const max = Math.max(...vals, 1);
+  
+  document.getElementById('funnelWrap').innerHTML = stages.map((s, i) => {
+    const val = vals[i];
+    const w = Math.round(val / max * 100);
+    const c = max > 0 ? pct(val, max) : 0;
+    const color = FUNNEL_COLORS[i % FUNNEL_COLORS.length];
+    return `<div class="funnel-row">
+      <div class="funnel-label">${s}</div>
+      <div class="funnel-bar-bg">
+        <div class="funnel-bar" style="width:${w}%;background:${color}">${val > 0 ? val : ''}</div>
+      </div>
+      <div class="funnel-val">${val}</div>
+      <div class="conv">${c}%</div>
+    </div>`;
   }).join('');
+}
+
+function renderConversion(rows) {
+  const stages = getUniqueStages(rows);
+  if (stages.length === 0) {
+    makeChart('chartConv', 'bar', { labels: ['Нет данных'], datasets: [{ label: 'Конверсия, %', data: [0] }] });
+    return;
+  }
+  
+  const vals = stages.map(s => sumStage(rows, s));
+  const base = vals[0] || 1;
+  
+  makeChart('chartConv', 'bar', { 
+    labels: stages.map(s => s.length > 12 ? s.slice(0, 12) + '…' : s), 
+    datasets: [{ 
+      label: 'Конверсия, %', 
+      data: vals.map(v => pct(v, base)), 
+      backgroundColor: FUNNEL_COLORS.map((c, i) => c + 'bb').slice(0, stages.length), 
+      borderRadius: 6 
+    }] 
+  }, { scales: { y: { max: 100 } } });
 }
 
 function renderChartCalls(rows) {
@@ -834,12 +894,6 @@ function renderTimeline(rows) {
     return;
   }
   makeChart('chartTimeline', 'line', { labels: dates, datasets: [{ label: 'Звонки', data: dates.map(d => byDate[d]), borderColor: '#6c63ff', backgroundColor: 'rgba(108,99,255,.12)', tension: .35, fill: true, pointRadius: 4 }] });
-}
-
-function renderConversion(rows) {
-  const vals = FUNNEL_STAGES.map(s => sumStage(rows, s));
-  const base = vals[0] || 1;
-  makeChart('chartConv', 'bar', { labels: FUNNEL_STAGES.map(s => s.replace(' условий', '').replace(' Работаем', '')), datasets: [{ label: 'Конверсия, %', data: vals.map(v => pct(v, base)), backgroundColor: FUNNEL_COLORS.map(c => c + 'bb'), borderRadius: 6 }] }, { scales: { y: { max: 100 } } });
 }
 
 function renderReject(rows) {
@@ -972,7 +1026,6 @@ function renderAIAdvisor(rows) {
   // 3. Анализ оплат по менеджерам
   const permPay = planRows.payments.permanent.filter(p => p.monthKey === targetMonthStr);
   const newPay = planRows.payments.new.filter(p => p.monthKey === targetMonthStr);
-  const allPayPlans = [...permPay, ...newPay];
   if (f.manager) {
     const filteredPerm = permPay.filter(p => p.manager === f.manager);
     const filteredNew = newPay.filter(p => p.manager === f.manager);
@@ -986,7 +1039,6 @@ function renderAIAdvisor(rows) {
       if (pctReal < 50) insights.push({ icon: '🆕', text: `${plan.manager}: план по новым клиентам выполнен на ${pctReal}%. Усилить привлечение.`, type: 'danger' });
     }
   } else {
-    // Общая аналитика по всем
     const totalPlanPerm = permPay.reduce((s, p) => s + p.plan, 0);
     const totalFactPerm = permPay.reduce((s, p) => s + p.fact, 0);
     const totalPlanNew = newPay.reduce((s, p) => s + p.plan, 0);
@@ -1013,7 +1065,6 @@ function renderAIAdvisor(rows) {
     insights.push({ icon: '✅', text: 'Все показатели в норме! Отличная работа команды.', type: 'good' });
   }
   
-  // Ограничим до 7 советов
   const topInsights = insights.slice(0, 7);
   
   document.getElementById('aiInsights').innerHTML = topInsights.map(i => `
